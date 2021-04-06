@@ -23,6 +23,7 @@ var (
 	videosCollection *mongo.Collection
 	likedVideosCollection *mongo.Collection
 	usersCollection *mongo.Collection
+	watchedVideosCollection *mongo.Collection
 
 )
 
@@ -63,6 +64,38 @@ func main() {
 
 		return err
 	})
+	app.Post("/watch/:video_id/:user_id", func(ctx *fiber.Ctx) error {
+		userId, err := strconv.ParseInt(ctx.Params("user_id"), 10, 64)
+		if err != nil {
+			return err
+		}
+		videoId, err := strconv.ParseInt(ctx.Params("video_id"), 10, 64)
+		if err != nil {
+			return err
+		}
+
+		if hasWatched(userId, videoId) {
+			_ = ctx.SendStatus(412)
+			_ = ctx.SendString("User has already watched this post")
+			return nil
+		}
+
+		user, err := getUser(userId)
+		if err != nil {
+			return err
+		}
+
+		video, err := getVideo(videoId)
+		if err != nil {
+			return err
+		}
+
+		err = watchVideo(user, video)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 
 	initDb()
 	log.Fatal(app.Listen(config.port))
@@ -85,9 +118,11 @@ func initDb() {
 	db := client.Database("blue")
 	videosCollection = db.Collection("video_metadata")
 	likedVideosCollection = db.Collection("liked_videos")
+	watchedVideosCollection = db.Collection("watched_videos")
 	usersCollection = db.Collection("users")
 }
 
+// Liking
 func hasLiked(userId int64, videoId int64) bool {
 	filter := bson.D{{"user_id", userId}, {"video_id", videoId}}
 	var limit int64 = 1
@@ -142,6 +177,34 @@ func likeVideo(user models.DatabaseUser, video models.DatabaseVideo) error {
 	return nil
 }
 
+// Watching
+func watchVideo(user models.DatabaseUser, video models.DatabaseVideo) error {
+	watchEvent := models.DatabaseWatchEvent{
+		VideoId: video.Id,
+		UserId:  user.Id,
+	}
+	_, err := watchedVideosCollection.InsertOne(mctx, watchEvent)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func hasWatched(userId int64, videoId int64) bool {
+	filter := bson.D{{"user_id", userId}, {"video_id", videoId}}
+	var limit int64 = 1
+	documentCount, err := watchedVideosCollection.CountDocuments(mctx, filter, &options.CountOptions{
+		Limit: &limit,
+	})
+	if err != nil {
+		log.Print(err)
+		return true
+	}
+	return documentCount == int64(1)
+}
+
+
+// Db utils
 func getUser(userId int64) (models.DatabaseUser, error) {
 	query := bson.D{{"_id", userId}}
 	rawUser := usersCollection.FindOne(mctx, query)
