@@ -147,21 +147,16 @@ func likeVideo(user models.DatabaseUser, video models.DatabaseVideo) error {
 	}
 
 	// Interests
+	interests := make(map[string]int64)
 	for _, tag := range video.Tags {
 		currentInterestValue, exists := user.Interests[tag]
 		if !exists {
 			currentInterestValue = 0
 		}
-		currentInterestValue += 1
-		user.Interests[tag] = currentInterestValue
+		currentInterestValue += 11
+		interests[tag] = currentInterestValue
 	}
-	update := bson.D{{"$set", bson.D{{"interests", user.Interests}}}}
-	filter := bson.D{{"_id", user.Id}}
-
-	_, err = usersCollection.UpdateOne(mctx, filter, update)
-	if err != nil {
-		return err
-	}
+	modifyInterests(user, interests)
 
 
 	// Like count
@@ -187,6 +182,17 @@ func watchVideo(user models.DatabaseUser, video models.DatabaseVideo) error {
 	if err != nil {
 		return err
 	}
+	interests := make(map[string]int64)
+	for _, tag := range video.Tags {
+		currentInterestValue, exists := user.Interests[tag]
+		if !exists {
+			currentInterestValue = 0
+		}
+		currentInterestValue -= 1
+		interests[tag] = currentInterestValue
+	}
+	modifyInterests(user, interests)
+
 	return nil
 }
 
@@ -225,4 +231,23 @@ func getVideo(videoId int64) (models.DatabaseVideo, error) {
 		return models.DatabaseVideo{}, err
 	}
 	return video, nil
+}
+func modifyInterests(user models.DatabaseUser, interests map[string]int64)  {
+	// Interests
+	for name, value := range interests {
+		currentInterestValue, exists := user.Interests[name]
+		if !exists {
+			currentInterestValue = 0
+		}
+		currentInterestValue += value
+		user.Interests[name] = currentInterestValue
+	}
+	update := bson.D{{"$set", bson.D{{"interests", user.Interests}}}}
+	filter := bson.D{{"_id", user.Id}}
+
+	_, err := usersCollection.UpdateOne(mctx, filter, update)
+	if err != nil {
+		log.Print(err)
+		return
+	}
 }
