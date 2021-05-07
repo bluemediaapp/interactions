@@ -135,7 +135,9 @@ func main() {
 			tags = append(tags, tag)
 
 			// Bad topics count
-			badTopics++
+			if isBadTopic(tag) {
+				badTopics++
+			}
 		}
 
 		upload := make(map[string]io.Reader)
