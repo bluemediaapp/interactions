@@ -4,13 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/NebulousLabs/go-skynet/v2"
-	"github.com/bluemediaapp/models"
-	"github.com/bwmarrin/snowflake"
-	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"io"
 	"log"
 	"math"
@@ -18,6 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/NebulousLabs/go-skynet/v2"
+	"github.com/bluemediaapp/models"
+	"github.com/bwmarrin/snowflake"
+	"github.com/gofiber/fiber/v2"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
@@ -31,7 +32,6 @@ var (
 	likedVideosCollection   *mongo.Collection
 	usersCollection         *mongo.Collection
 	watchedVideosCollection *mongo.Collection
-	badTopicsCollection     *mongo.Collection
 )
 
 type VideoUpload struct {
@@ -124,7 +124,6 @@ func main() {
 		if len(uploadedVideo.Description) > 255 {
 			return errors.New("description is too long (max 255 characters)")
 		}
-		var badTopics int32 = 0
 		tags := make([]string, 0)
 		splittedDescription := strings.Split(uploadedVideo.Description, " ")
 		for _, keyword := range splittedDescription {
@@ -133,11 +132,6 @@ func main() {
 			}
 			tag := strings.Replace(keyword, "#", "", 1)
 			tags = append(tags, tag)
-
-			// Bad topics count
-			if isBadTopic(tag) {
-				badTopics++
-			}
 		}
 
 		upload := make(map[string]io.Reader)
@@ -156,7 +150,6 @@ func main() {
 			Likes:       0,
 			Tags:        tags,
 			Modifiers:   make([]string, 0),
-			BadTopics:   badTopics,
 			StorageKey:  skylink,
 		}
 		return uploadVideo(video)
@@ -186,7 +179,6 @@ func initDb() {
 	likedVideosCollection = db.Collection("liked_videos")
 	watchedVideosCollection = db.Collection("watched_videos")
 	usersCollection = db.Collection("users")
-	badTopicsCollection = db.Collection("bad_topics")
 }
 
 // Liking
@@ -322,13 +314,4 @@ func modifyInterests(user models.DatabaseUser, interests map[string]int64) {
 		log.Print(err)
 		return
 	}
-}
-
-func isBadTopic(topic string) bool {
-	documentCount, err := badTopicsCollection.CountDocuments(mctx, bson.D{{"topic", topic}})
-	if err != nil {
-		log.Print(err)
-		return false
-	}
-	return documentCount != 0
 }
