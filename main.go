@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -35,9 +34,8 @@ var (
 )
 
 type VideoUpload struct {
-	Description string `json:"description"`
-	Series      string `json:"series"`
-	Video       []byte `json:"video_data"`
+	Description string `form:"description"`
+	Series      string `form:"series"`
 }
 
 func main() {
@@ -50,7 +48,7 @@ func main() {
 	snowflake.Epoch = time.Date(2020, time.January, 0, 0, 0, 0, 0, time.UTC).Unix()
 	snowNode, _ := snowflake.NewNode(1)
 
-	app.Post("/like/:video_id/:user_id", func(ctx *fiber.Ctx) error {
+	app.Get("/like/:video_id/:user_id", func(ctx *fiber.Ctx) error {
 		userId, err := strconv.ParseInt(ctx.Params("user_id"), 10, 64)
 		if err != nil {
 			return err
@@ -80,7 +78,7 @@ func main() {
 
 		return err
 	})
-	app.Post("/watch/:video_id/:user_id", func(ctx *fiber.Ctx) error {
+	app.Get("/watch/:video_id/:user_id", func(ctx *fiber.Ctx) error {
 		userId, err := strconv.ParseInt(ctx.Params("user_id"), 10, 64)
 		if err != nil {
 			return err
@@ -112,13 +110,14 @@ func main() {
 		}
 		return nil
 	})
-	app.Post("/upload/:user_id", func(ctx *fiber.Ctx) error {
+	app.Get("/upload/:user_id", func(ctx *fiber.Ctx) error {
 		userId, err := strconv.ParseInt(ctx.Params("user_id"), 10, 64)
 		if err != nil {
 			return err
 		}
 		uploadedVideo := new(VideoUpload)
-		if err := ctx.BodyParser(&uploadedVideo); err != nil {
+		err = ctx.BodyParser(uploadedVideo)
+		if err != nil {
 			return err
 		}
 		if len(uploadedVideo.Description) > 255 {
@@ -135,7 +134,15 @@ func main() {
 		}
 
 		upload := make(map[string]io.Reader)
-		upload["upload"] = bytes.NewReader(uploadedVideo.Video)
+		file, err := ctx.FormFile("video_upload")
+		if err != nil {
+			return err
+		}
+		file_reader, err := file.Open()
+		if err != nil {
+			return err
+		}
+		upload["upload"] = file_reader
 		skylink, err := skyClient.Upload(upload, skynet.DefaultUploadOptions)
 		if err != nil {
 			return err
@@ -152,7 +159,12 @@ func main() {
 			Modifiers:   make([]string, 0),
 			StorageKey:  skylink,
 		}
-		return uploadVideo(video)
+
+		err = uploadVideo(video)
+		if err != nil {
+			return err
+		}
+		return ctx.SendJSON(video)
 
 	})
 
@@ -189,7 +201,6 @@ func hasLiked(userId int64, videoId int64) bool {
 		Limit: &limit,
 	})
 	if err != nil {
-		log.Print(err)
 		return true
 	}
 	return documentCount == int64(1)
@@ -261,7 +272,6 @@ func hasWatched(userId int64, videoId int64) bool {
 		Limit: &limit,
 	})
 	if err != nil {
-		log.Print(err)
 		return true
 	}
 	return documentCount == int64(1)
