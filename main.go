@@ -2,18 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
-	"io"
 	"log"
 	"math"
 	"os"
 	"strconv"
-	"strings"
-	"time"
 
-	"github.com/NebulousLabs/go-skynet/v2"
 	"github.com/bluemediaapp/models"
-	"github.com/bwmarrin/snowflake"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -43,11 +37,6 @@ func main() {
 		port:     os.Getenv("port"),
 		mongoUri: os.Getenv("mongo_uri"),
 	}
-	skyClient := skynet.New()
-
-	snowflake.Epoch = time.Date(2020, time.January, 0, 0, 0, 0, 0, time.UTC).Unix()
-	snowNode, _ := snowflake.NewNode(1)
-
 	app.Get("/like/:video_id/:user_id", func(ctx *fiber.Ctx) error {
 		userId, err := strconv.ParseInt(ctx.Params("user_id"), 10, 64)
 		if err != nil {
@@ -109,63 +98,6 @@ func main() {
 			return err
 		}
 		return nil
-	})
-	app.Get("/upload/:user_id", func(ctx *fiber.Ctx) error {
-		userId, err := strconv.ParseInt(ctx.Params("user_id"), 10, 64)
-		if err != nil {
-			return err
-		}
-		uploadedVideo := new(VideoUpload)
-		err = ctx.BodyParser(uploadedVideo)
-		if err != nil {
-			return err
-		}
-		if len(uploadedVideo.Description) > 255 {
-			return errors.New("description is too long (max 255 characters)")
-		}
-		tags := make([]string, 0)
-		splittedDescription := strings.Split(uploadedVideo.Description, " ")
-		for _, keyword := range splittedDescription {
-			if !strings.HasPrefix(keyword, "#") {
-				continue
-			}
-			tag := strings.Replace(keyword, "#", "", 1)
-			tags = append(tags, tag)
-		}
-
-		upload := make(map[string]io.Reader)
-		file, err := ctx.FormFile("video_upload")
-		if err != nil {
-			return err
-		}
-		file_reader, err := file.Open()
-		if err != nil {
-			return err
-		}
-		upload["upload"] = file_reader
-		skylink, err := skyClient.Upload(upload, skynet.DefaultUploadOptions)
-		if err != nil {
-			return err
-		}
-
-		video := models.DatabaseVideo{
-			Id:          snowNode.Generate().Int64(),
-			CreatorId:   userId,
-			Description: uploadedVideo.Description,
-			Series:      uploadedVideo.Series,
-			Public:      true,
-			Likes:       0,
-			Tags:        tags,
-			Modifiers:   make([]string, 0),
-			StorageKey:  skylink,
-		}
-
-		err = uploadVideo(video)
-		if err != nil {
-			return err
-		}
-		return ctx.SendJSON(video)
-
 	})
 
 	initDb()
